@@ -162,6 +162,52 @@ services:
     ports:
       - "127.0.0.1:8080:80"
 
+  # ---------- Laravel (selalu jalan) ----------
+  laravel-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.laravel
+    container_name: laravel-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE   # bind port 80
+      - CHOWN              # apache membetulkan kepemilikan log/tmp
+      - SETUID
+      - SETGID
+      - DAC_READ_SEARCH
+    mem_limit: 512m
+    pids_limit: 150
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: http://localhost:8000
+      LOG_LEVEL: debug
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${MYSQL_DATABASE}
+      DB_USERNAME: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: database
+    ports:
+      - "127.0.0.1:8000:80"
+    volumes:
+      - ./laravel:/var/www/laravel   # kode di host, perubahan langsung terlihat
+    networks:
+      - db_center          # agar port tetap bisa dipublikasikan
+      - db_internal        # jalur menuju database
+
   # ---------- Profil PROD: terbuka ke jaringan, root ditolak ----------
   phpmyadmin-prod:
     <<: *pma-common

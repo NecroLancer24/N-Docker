@@ -1,0 +1,8 @@
+# Jangan bocorkan isi atau berat-bangun context build
+.env
+backups/
+.git/
+.gitignore
+README.md
+docker-compose.yaml
+phpmyadmin/

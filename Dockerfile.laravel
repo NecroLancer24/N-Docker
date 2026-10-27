@@ -1,0 +1,34 @@
+# Build-time only: semuanya di sini harus di-bake ke image (perlu rebuild
+# bila diubah). Konfigurasi runtime tetap di docker-compose.yaml.
+FROM php:8.3-apache
+
+# Ekstensi PHP yang dibutuhkan Laravel
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libfreetype6-dev \
+        libjpeg62-turbo-dev \
+        libpng-dev \
+        libzip-dev \
+        libonig-dev \
+        libxml2-dev \
+        libicu-dev \
+        zip unzip git \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" \
+        pdo_mysql \
+        mbstring \
+        bcmath \
+        gd \
+        zip \
+        intl \
+        exif \
+        opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# URL cantik (mod_rewrite) + DocumentRoot ke /public
+RUN a2enmod rewrite headers \
+    && sed -ri -e 's!/var/www/html!/var/www/laravel/public!g' \
+        /etc/apache2/sites-available/*.conf \
+        /etc/apache2/apache2.conf
+
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

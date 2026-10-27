@@ -66,13 +66,45 @@ gunzip -c backups/postgres/<file>.sql.gz | \
   docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 ```
 
+## Menjalankan proyek Laravel
+
+Laravel jalan di `127.0.0.1:8000`, kode di folder `./laravel` (live edit, tanpa rebuild).
+Hal yang butuh image (ekstensi PHP, mod_rewrite, DocumentRoot `/public`, Composer)
+ada di `Dockerfile.laravel`; sisanya (env, port, hardening) di compose.
+
+Konfigurasi DB sudah di-inject dari `.env` compose (variabel `DB_HOST` dll.),
+jadi cukup pastikan `config/database.php` tidak menimpanya dan gunakan
+`env('DB_HOST')` seperti bawaan Laravel.
+
+Perintah harian:
+
+```bash
+docker compose exec laravel-app php artisan migrate
+docker compose exec laravel-app php artisan test
+```
+
+Catatan pertama kali (jika folder masih kosong):
+
+```bash
+docker compose exec laravel-app composer create-project laravel/laravel /var/www/laravel_tmp
+# pindahkan isi proyek ke /var/www/laravel, lalu:
+docker compose exec laravel-app php artisan key:generate
+docker compose exec laravel-app php artisan migrate
+```
+
+Alternatif cepat tanpa `composer create-project`: letakkan kode proyek Laravel
+yang sudah ada di folder `./laravel`, lalu jalankan `composer install` di dalam.
+
 ## Struktur
 
 ```
 .
 ├── docker-compose.yaml           # seluruh stack + hardening
+├── Dockerfile.laravel            # image PHP-Apache untuk Laravel (build-time saja)
+├── .dockerignore
 ├── .env.example                  # contoh variabel lingkungan
 ├── phpmyadmin/
 │   └── config.user.inc.php       # proteksi root & tanpa-password (profil prod)
+├── laravel/                      # kode aplikasi Laravel
 └── backups/                      # hasil dump otomatis (git-ignored)
 ```
