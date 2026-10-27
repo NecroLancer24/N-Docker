@@ -8,6 +8,17 @@ x-phpmyadmin-common: &pma-common
     PMA_HOST: mysql
     PMA_PORT: 3306
     UPLOAD_LIMIT: 64M
+  # ---------- Hardening umum untuk phpMyAdmin ----------
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  cap_add:
+    - NET_BIND_SERVICE   # bind port 80
+  read_only: false
+  networks:
+    - db_center          # tempat port dipublikasikan
+    - db_internal        # jalur menuju MySQL
 
 services:
   # ---------- Selalu jalan, hanya bisa diakses dari mesin ini ----------
@@ -15,6 +26,18 @@ services:
     image: mysql:8.4
     container_name: mysql
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN            # entrypoint membetulkan kepemilikan /var/lib/mysql
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE # bind port 3306
+      - DAC_READ_SEARCH  # entrypoint membaca/chown data dir yang sudah ada
+    mem_limit: 1g
+    pids_limit: 200
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_ROOT_HOST: ${MYSQL_ROOT_HOST:-localhost}
@@ -26,6 +49,9 @@ services:
       - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    networks:
+      - db_center          # agar port tetap bisa dipublikasikan
+      - db_internal        # jalur menuju MySQL
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
@@ -36,6 +62,18 @@ services:
     image: postgres:17
     container_name: postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - FOWNER           # entrypoint postgres untuk init data dir
+      - DAC_READ_SEARCH  # bypass pemindaian file pada data dir yang sudah ada
+    mem_limit: 1g
+    pids_limit: 200
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -45,11 +83,76 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - db_center
+      - db_internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ---------- Backup otomatis, selalu jalan ----------
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:17-alpine
+    container_name: postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 100
+    environment:
+      TZ: Asia/Jakarta
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 2
+      POSTGRES_EXTRA_OPTS: "-Z6 --schema=public"
+    volumes:
+      - ./backups/postgres:/backups
+    networks:
+      - db_internal
+
+  mysql-backup:
+    image: databack/mysql-backup:latest
+    container_name: mysql-backup
+    restart: unless-stopped
+    # image-nya default jalan sebagai uid1005 tapi dir bind-mount dibuat root;
+    # override ke root agar bisa menulis tanpa setup manual di host
+    user: "0:0"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 100
+    environment:
+      TZ: Asia/Jakarta
+      DB_SERVER: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASS: ${MYSQL_ROOT_PASSWORD}
+      DB_DUMP_TARGET: /backup
+      DB_DUMP_FREQUENCY: 1440   # tiap 24 jam
+      DB_DUMP_BEGIN: "+0"       # dump pertama langsung berjalan
+      DB_DUMP_RETENTION: 14c    # simpan 14 dump terakhir
+    command: ["dump"]
+    volumes:
+      - ./backups/mysql:/backup
+    networks:
+      - db_internal
 
   # ---------- Profil DEV: hanya localhost, root diizinkan ----------
   phpmyadmin-dev:
@@ -68,6 +171,11 @@ services:
       - "${PMA_BIND:-0.0.0.0}:8080:80"
     volumes:
       - ./phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php:ro
+
+networks:
+  db_internal:      # database + backup, tidak ada akses internet
+    internal: true
+  db_center:        # jaringan phpMyAdmin, tempat port dipublikasikan
 
 volumes:
   mysql_data:
