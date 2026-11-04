@@ -1,6 +1,6 @@
 # Build-time only: semuanya di sini harus di-bake ke image (perlu rebuild
 # bila diubah). Konfigurasi runtime tetap di docker-compose.yaml.
-FROM php:8.3-apache
+FROM php:8.4-apache
 
 # Ekstensi PHP yang dibutuhkan Laravel
 RUN apt-get update && apt-get install -y --no-install-recommends \

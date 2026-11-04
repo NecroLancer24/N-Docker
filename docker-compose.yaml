@@ -184,6 +184,8 @@ services:
       - SETUID
       - SETGID
       - DAC_READ_SEARCH
+      - DAC_OVERRIDE       # root menulis ke direktori kode yang dimiliki host uid lain
+      - FOWNER             # chmod/chown di file yang bukan milik root
     mem_limit: 512m
     pids_limit: 150
     environment:
@@ -194,7 +196,7 @@ services:
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_DATABASE: ${MYSQL_DATABASE}
+      DB_DATABASE: parkir-sip
       DB_USERNAME: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       SESSION_DRIVER: file
