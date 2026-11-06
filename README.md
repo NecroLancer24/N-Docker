@@ -10,7 +10,7 @@ lengkap dengan hardening keamanan dan cadangan (backup) otomatis.
 | `mysql` | mysql:8.4 | 127.0.0.1:3306 | DB utama, volume `mysql_data` |
 | `postgres` | postgres:17 | 127.0.0.1:5432 | DB kedua, volume `postgres_data` |
 | `phpmyadmin-dev` | phpmyadmin:5 | 127.0.0.1:8080 | Profil `dev`, root diizinkan |
-| `phpmyadmin-prod` | phpmyadmin:5 | `${PMA_BIND}:8080` | Profil `prod`, root ditolak |
+| `phpmyadmin-prod` | phpmyadmin:5 | `${BIND_PROD}:8080` | Profil `prod`, root ditolak |
 | `mysql-backup` | databack/mysql-backup | — | Dump otomatis |
 | `postgres-backup` | prodrigestivill/postgres-backup-local | — | Dump otomatis |
 
@@ -79,17 +79,18 @@ jadi cukup pastikan `config/database.php` tidak menimpanya dan gunakan
 Perintah harian:
 
 ```bash
-docker compose exec laravel-app php artisan migrate
-docker compose exec laravel-app php artisan test
+docker compose exec laravel-prod php artisan migrate   # saat profil prod
+docker compose exec laravel-dev  php artisan migrate   # saat profil dev
+docker compose exec laravel-prod php artisan test
 ```
 
 Catatan pertama kali (jika folder masih kosong):
 
 ```bash
-docker compose exec laravel-app composer create-project laravel/laravel /var/www/laravel_tmp
+docker compose exec laravel-prod composer create-project laravel/laravel /var/www/laravel_tmp
 # pindahkan isi proyek ke /var/www/laravel, lalu:
-docker compose exec laravel-app php artisan key:generate
-docker compose exec laravel-app php artisan migrate
+docker compose exec laravel-prod php artisan key:generate
+docker compose exec laravel-prod php artisan migrate
 ```
 
 Alternatif cepat tanpa `composer create-project`: letakkan kode proyek Laravel

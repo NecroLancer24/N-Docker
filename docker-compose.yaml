@@ -1,3 +1,47 @@
+x-laravel-common: &laravel-common
+  build:
+    context: .
+    dockerfile: Dockerfile.laravel
+  restart: unless-stopped
+  depends_on:
+    mysql:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  cap_add:
+    - NET_BIND_SERVICE   # bind port 80
+    - CHOWN              # apache membetulkan kepemilikan log/tmp
+    - SETUID
+    - SETGID
+    - DAC_READ_SEARCH
+    - DAC_OVERRIDE       # root menulis ke direktori kode yang dimiliki host uid lain
+    - FOWNER             # chmod/chown di file yang bukan milik root
+  mem_limit: 512m
+  pids_limit: 150
+  environment:
+    APP_ENV: ${APP_ENV:-local}
+    APP_DEBUG: ${APP_DEBUG:-true}
+    APP_URL: http://localhost:8000
+    LOG_LEVEL: debug
+    DB_CONNECTION: mysql
+    DB_HOST: mysql
+    DB_PORT: 3306
+    DB_DATABASE: parkir-sip
+    DB_USERNAME: ${MYSQL_USER}
+    DB_PASSWORD: ${MYSQL_PASSWORD}
+    SESSION_DRIVER: file
+    CACHE_STORE: file
+    QUEUE_CONNECTION: database
+  volumes:
+    - ./laravel:/var/www/laravel   # kode di host, perubahan langsung terlihat
+  networks:
+    - db_center          # agar port tetap bisa dipublikasikan
+    - db_internal        # jalur menuju database
+
 x-phpmyadmin-common: &pma-common
   image: phpmyadmin:5
   restart: unless-stopped
@@ -15,6 +59,10 @@ x-phpmyadmin-common: &pma-common
     - ALL
   cap_add:
     - NET_BIND_SERVICE   # bind port 80
+    - SETUID             # apache turun hak ke www-data
+    - SETGID             # apache set group www-data
+    - CHOWN              # entrypoint menyiapkan berkas milik www-data
+    - DAC_OVERRIDE       # root menulis ke /etc/phpmyadmin (milik www-data) saat men-generate config
   read_only: false
   networks:
     - db_center          # tempat port dipublikasikan
@@ -154,71 +202,39 @@ services:
     networks:
       - db_internal
 
-  # ---------- Profil DEV: hanya localhost, root diizinkan ----------
+  # ---------- Profil DEV: bind dari BIND_DEV (default localhost) ----------
   phpmyadmin-dev:
     <<: *pma-common
     profiles: ["dev"]
     container_name: phpmyadmin-dev
     ports:
-      - "127.0.0.1:8080:80"
+      - "${BIND_DEV:-127.0.0.1}:8080:80"
 
-  # ---------- Laravel (selalu jalan) ----------
-  laravel-app:
-    build:
-      context: .
-      dockerfile: Dockerfile.laravel
-    container_name: laravel-app
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE   # bind port 80
-      - CHOWN              # apache membetulkan kepemilikan log/tmp
-      - SETUID
-      - SETGID
-      - DAC_READ_SEARCH
-      - DAC_OVERRIDE       # root menulis ke direktori kode yang dimiliki host uid lain
-      - FOWNER             # chmod/chown di file yang bukan milik root
-    mem_limit: 512m
-    pids_limit: 150
-    environment:
-      APP_ENV: ${APP_ENV:-local}
-      APP_DEBUG: ${APP_DEBUG:-true}
-      APP_URL: http://localhost:8000
-      LOG_LEVEL: debug
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: parkir-sip
-      DB_USERNAME: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      SESSION_DRIVER: file
-      CACHE_STORE: file
-      QUEUE_CONNECTION: database
+  # ---------- Profil DEV: bind dari BIND_DEV (default localhost) ----------
+  laravel-dev:
+    <<: *laravel-common
+    profiles: ["dev"]
+    container_name: laravel-dev
     ports:
-      - "127.0.0.1:8000:80"
-    volumes:
-      - ./laravel:/var/www/laravel   # kode di host, perubahan langsung terlihat
-    networks:
-      - db_center          # agar port tetap bisa dipublikasikan
-      - db_internal        # jalur menuju database
+      - "${BIND_DEV:-127.0.0.1}:8000:80"
 
-  # ---------- Profil PROD: terbuka ke jaringan, root ditolak ----------
+  # ---------- Profil PROD: terbuka ke jaringan (BIND_PROD), root ditolak ----------
   phpmyadmin-prod:
     <<: *pma-common
     profiles: ["prod"]
     container_name: phpmyadmin-prod
     ports:
-      - "${PMA_BIND:-0.0.0.0}:8080:80"
+      - "${BIND_PROD:-0.0.0.0}:8080:80"
     volumes:
       - ./phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php:ro
+
+  # ---------- Profil PROD: terbuka ke jaringan (BIND_PROD) ----------
+  laravel-prod:
+    <<: *laravel-common
+    profiles: ["prod"]
+    container_name: laravel-prod
+    ports:
+      - "${BIND_PROD:-0.0.0.0}:8000:80"
 
 networks:
   db_internal:      # database + backup, tidak ada akses internet
